@@ -74,7 +74,8 @@ def build_cache(ann_path: str, image_dir: str, out_dir: str, workers: int = 4) -
         for i, d, med, p in ex.map(_job, jobs, chunksize=2):
             disks[i], medoids[i], pos[i] = d, med, p
     np.savez(os.path.join(out_dir, "pos.npz"), *pos)
-    json.dump(dict(files=files, disks=disks, starts=starts, counts=[len(ids_by_file[f]) for f in files],
+    from .geometry import DISK_FIT
+    json.dump(dict(disk_fit=DISK_FIT, files=files, disks=disks, starts=starts, counts=[len(ids_by_file[f]) for f in files],
                    medoid=medoids, N=N, M=M, H=H, W=W), open(meta_p, "w"))
     return out_dir
 

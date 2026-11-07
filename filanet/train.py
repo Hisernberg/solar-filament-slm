@@ -138,6 +138,7 @@ def main():
     cfg = dict(encoder=a.encoder, dec_channels=tuple(int(c) for c in a.dec_channels.split(",")),
                strip_pool=not a.no_strip_pool)
     model = build_model(cfg, pretrained=True).to(device).to(memory_format=torch.channels_last)
+    model.disk_fit = cache.meta.get("disk_fit", "halo")
     print(f"params {count_params(model) / 1e6:.2f}M  cfg {cfg}", flush=True)
     ema = EMA(model, a.ema)
     fwd = torch.compile(model) if a.compile else model

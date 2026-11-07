@@ -27,7 +27,7 @@ def _cos_window(t: int) -> torch.Tensor:
 def predict_maps(model, img_u8: np.ndarray, device: str | torch.device = "cuda", tta: int = 1,
                  tile: int | None = None, stride: int | None = None, amp: bool = True):
     """-> (mask_prob uint8 HxW, spine_prob uint8 HxW, disk). Probabilities are stored as round(p*255)."""
-    x_np, disk = make_inputs(img_u8)
+    x_np, disk = make_inputs(img_u8, method=getattr(model, "disk_fit", None))
     x = torch.from_numpy(x_np)[None].to(device)
     dev_type = x.device.type
     dtype = torch.bfloat16 if dev_type == "cuda" and torch.cuda.get_device_capability()[0] >= 8 else torch.float16

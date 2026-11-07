@@ -139,11 +139,13 @@ def count_params(m: nn.Module) -> int:
 
 def save_checkpoint(path: str, model: nn.Module, cfg: dict, extra: dict | None = None, half: bool = True):
     sd = {k: (v.half() if half and v.is_floating_point() else v) for k, v in model.state_dict().items()}
-    torch.save({"model": sd, "cfg": cfg, **(extra or {})}, path)
+    from .geometry import DISK_FIT
+    torch.save({"model": sd, "cfg": cfg, "disk_fit": getattr(model, "disk_fit", DISK_FIT), **(extra or {})}, path)
 
 
 def load_checkpoint(path: str, device: str = "cpu") -> tuple[FilaNet, dict]:
     ck = torch.load(path, map_location="cpu", weights_only=False)
     model = build_model(ck["cfg"], pretrained=False)
     model.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["model"].items()})
+    model.disk_fit = ck.get("disk_fit", "halo")  # checkpoints before v2 were trained on the halo fit
     return model.eval().to(device), ck

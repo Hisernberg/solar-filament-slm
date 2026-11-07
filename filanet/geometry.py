@@ -28,8 +28,59 @@ class Disk:
     r: float
 
 
-def fit_disk(img_u8: np.ndarray) -> Disk:
-    """Fit the solar disk with a robust threshold on a 1/4-res copy (fast, ~5 ms)."""
+DISK_FIT = "limb"  # "limb" (limb-ring fit, default since v2) or "halo" (v1 threshold fit)
+
+
+def fit_disk(img_u8: np.ndarray, method: str | None = None) -> Disk:
+    """Fit the true solar limb.
+
+    GONG frames show the limb as a thin bright ring; beyond it there is often a grey scattered-light
+    halo (sometimes as bright as the disk) and then the black camera aperture. A threshold fit locks
+    onto the halo edge and overestimates R by 3-8 %, so we (1) get a coarse centre / radius from the
+    thresholded blob, (2) find the limb spike along 180 rays, (3) fit a circle with outlier rejection.
+    """
+    c = _coarse_disk(img_u8)
+    if (method or DISK_FIT) == "halo":
+        return c
+    try:
+        return _limb_ring_fit(img_u8, c)
+    except Exception:
+        return c
+
+
+def _limb_ring_fit(img_u8: np.ndarray, c: Disk, n_rays: int = 180) -> Disk:
+    from scipy.ndimage import map_coordinates, median_filter
+    img = img_u8.astype(np.float32)
+    rs = np.arange(0.72 * c.r, 1.06 * c.r, 1.0, dtype=np.float32)
+    th = np.linspace(0, 2 * np.pi, n_rays, endpoint=False, dtype=np.float32)
+    xs = c.cx + rs[None, :] * np.cos(th)[:, None]
+    ys = c.cy + rs[None, :] * np.sin(th)[:, None]
+    prof = map_coordinates(img, [ys.ravel(), xs.ravel()], order=1, mode="constant").reshape(n_rays, -1)
+    spike = prof - median_filter(prof, size=(1, 15), mode="nearest")
+    k = spike.argmax(1)
+    ok = spike[np.arange(n_rays), k] > 35.0
+    px, py = xs[np.arange(n_rays), k][ok], ys[np.arange(n_rays), k][ok]
+    if len(px) < 30:
+        return c
+    keep = np.ones(len(px), bool)
+    for _ in range(4):  # Kasa algebraic circle fit + residual-based outlier rejection
+        A = np.stack([px[keep], py[keep], np.ones(keep.sum())], 1)
+        b = px[keep] ** 2 + py[keep] ** 2
+        sol = np.linalg.lstsq(A, b, rcond=None)[0]
+        cx, cy = sol[0] / 2, sol[1] / 2
+        r = float(np.sqrt(sol[2] + cx ** 2 + cy ** 2))
+        res = np.abs(np.hypot(px - cx, py - cy) - r)
+        new = res < max(3.0, 2.5 * np.median(res[keep]))
+        if new.sum() < 30 or (new == keep).all():
+            break
+        keep = new
+    if not (0.80 * c.r < r < 1.05 * c.r):
+        return c
+    return Disk(float(cx), float(cy), r)
+
+
+def _coarse_disk(img_u8: np.ndarray) -> Disk:
+    """Coarse disk from a robust threshold on a 1/4-res copy (fast, ~5 ms)."""
     h, w = img_u8.shape
     s = 4
     small = cv2.resize(img_u8, (w // s, h // s), interpolation=cv2.INTER_AREA)
@@ -80,10 +131,10 @@ def longitude_ignore_mask(shape: tuple[int, int], disk: Disk) -> np.ndarray:
     return ((sin_lon > SIN70) & (rr <= 1.0)).astype(np.uint8)
 
 
-def make_inputs(img_u8: np.ndarray, disk: Disk | None = None) -> tuple[np.ndarray, Disk]:
+def make_inputs(img_u8: np.ndarray, disk: Disk | None = None, method: str | None = None) -> tuple[np.ndarray, Disk]:
     """uint8 HxW -> float32 3xHxW network input (see module docstring)."""
     if disk is None:
-        disk = fit_disk(img_u8)
+        disk = fit_disk(img_u8, method)
     img = img_u8.astype(np.float32) / 255.0
     r = radial_map(img.shape, disk)
     on = r <= 0.98
