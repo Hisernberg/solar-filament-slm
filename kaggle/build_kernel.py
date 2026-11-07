@@ -62,6 +62,7 @@ def main():
     ap.add_argument("--kernels", nargs="*", default=[])
     ap.add_argument("--models", nargs="*", default=[])
     ap.add_argument("--no-gpu", action="store_true")
+    ap.add_argument("--no-comp", action="store_true", help="do not attach the competition (use a dataset copy)")
     a = ap.parse_args()
     out = os.path.join(ROOT, "kaggle", "out", a.slug)
     os.makedirs(out, exist_ok=True)
@@ -69,7 +70,7 @@ def main():
     open(os.path.join(out, "run.py"), "w").write(src)
     meta = dict(id=f"{a.user}/{a.slug}", title=a.slug, code_file="run.py", language="python", kernel_type="script",
                 is_private=True, enable_gpu=not a.no_gpu, enable_internet=True, dataset_sources=a.datasets,
-                competition_sources=["filament-segmentation-2026"], kernel_sources=a.kernels, model_sources=a.models)
+                competition_sources=[] if a.no_comp else ["filament-segmentation-2026"], kernel_sources=a.kernels, model_sources=a.models)
     json.dump(meta, open(os.path.join(out, "kernel-metadata.json"), "w"), indent=1)
     print(out, f"{os.path.getsize(os.path.join(out, 'run.py')) / 1e3:.0f} KB")
 

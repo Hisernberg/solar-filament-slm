@@ -38,7 +38,7 @@ def main():
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--runs", nargs="+", required=True)
     ap.add_argument("--out", default="weights")
-    ap.add_argument("--n-folds", type=int, default=4)
+    ap.add_argument("--n-folds", type=int, default=5)
     ap.add_argument("--workers", type=int, default=os.cpu_count())
     a = ap.parse_args()
     ann = find_annotation_json(a.data_dir)

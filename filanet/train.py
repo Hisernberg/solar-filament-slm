@@ -38,7 +38,7 @@ def parse():
     ap.add_argument("--out-dir", default="runs/f0")
     ap.add_argument("--cache-dir", default=None, help="rendered per-annotator targets (shared by folds)")
     ap.add_argument("--fold", type=int, default=0, help="-1 = train on all images")
-    ap.add_argument("--n-folds", type=int, default=4)
+    ap.add_argument("--n-folds", type=int, default=5)
     ap.add_argument("--encoder", default="convnext_atto.d2_in1k")
     ap.add_argument("--dec-channels", default="128,80,48,24,16")
     ap.add_argument("--no-strip-pool", action="store_true")
@@ -64,6 +64,10 @@ def parse():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-train-images", type=int, default=0, help="debug: subsample")
     ap.add_argument("--time-limit-min", type=float, default=0, help="stop training after N minutes")
+    ap.add_argument("--dump-all-maps", action="store_true",
+                    help="after training, write mask/spine maps for ALL images (teacher maps for distillation)")
+    ap.add_argument("--time-budget-min", type=float, default=0,
+                    help="fit the epoch count to this budget after epoch 1 (cosine schedule still completes)")
     return ap.parse_args()
 
 
@@ -147,18 +151,18 @@ def main():
         (no_decay if p.ndim <= 1 else decay).append(p)
     opt = torch.optim.AdamW([{"params": decay, "weight_decay": a.wd}, {"params": no_decay, "weight_decay": 0.0}],
                             lr=a.lr, betas=(0.9, 0.99))
-    total = a.epochs * len(dl)
-    warm = int(a.warmup_epochs * len(dl))
+    sch = {"total": a.epochs * len(dl), "warm": int(a.warmup_epochs * len(dl))}
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: (s + 1) / max(warm, 1) if s < warm else
-        0.01 + 0.99 * 0.5 * (1 + math.cos(math.pi * (s - warm) / max(total - warm, 1))))
+        opt, lambda s: (s + 1) / max(sch["warm"], 1) if s < sch["warm"] else
+        0.01 + 0.99 * 0.5 * (1 + math.cos(math.pi * min(1.0, (s - sch["warm"]) / max(sch["total"] - sch["warm"], 1)))))
     crit = FilamentLoss(w_spine=a.w_spine, w_srec=a.w_srec, w_kd=a.w_kd)
     amp_dtype = torch.bfloat16 if device.type == "cuda" and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     scaler = torch.amp.GradScaler(enabled=(device.type == "cuda" and amp_dtype == torch.float16))
 
     log, best, best_rule = [], -1.0, None
     t0 = time.time()
-    for ep in range(a.epochs):
+    ep = 0
+    while ep < a.epochs:
         model.train()
         run, nb, parts_sum = 0.0, 0, {}
         for x, y in dl:
@@ -178,7 +182,7 @@ def main():
                 parts_sum[k] = parts_sum.get(k, 0.0) + v
         msg = dict(epoch=ep, loss=run / max(nb, 1), **{k: v / max(nb, 1) for k, v in parts_sum.items()},
                    lr=sched.get_last_lr()[0], sec=time.time() - t0)
-        timeout = a.time_limit_min and (time.time() - t0) / 60 > a.time_limit_min
+        timeout = bool(a.time_limit_min) and (time.time() - t0) / 60 > a.time_limit_min
         last = ep == a.epochs - 1 or timeout
         if va_eval and ((ep + 1) % a.val_every == 0 or last):
             ema.module.eval()
@@ -196,6 +200,14 @@ def main():
         if timeout:
             print("time limit reached", flush=True)
             break
+        if ep == 0 and a.time_budget_min:
+            per_ep = (time.time() - t0) / 60  # includes no validation yet: add ~10% for periodic val
+            fit = max(4, int(a.time_budget_min / (per_ep * 1.12)))
+            if fit < a.epochs:
+                print(f"epoch takes {per_ep:.1f} min -> training {fit} epochs instead of {a.epochs}", flush=True)
+                a.epochs = fit
+                sch["total"] = a.epochs * len(dl)
+        ep += 1
 
     # out-of-fold maps from the best checkpoint, for keep-rule tuning and the rescorer
     if va:
@@ -211,6 +223,17 @@ def main():
             cv2.imwrite(os.path.join(od, stem_of(f) + "_s.png"), sm)
             disks[f] = [disk.cx, disk.cy, disk.r]
         json.dump(disks, open(os.path.join(od, "disks.json"), "w"))
+    if a.dump_all_maps:
+        from .model import load_checkpoint
+        ck_path = os.path.join(a.out_dir, "best.pt" if va else "last.pt")
+        m, _ = load_checkpoint(ck_path, device=str(device))
+        od = os.path.join(a.out_dir, "maps_all")
+        os.makedirs(od, exist_ok=True)
+        for f in files:
+            pm, sm, _ = predict_maps(m, load_image(os.path.join(image_dir, f)), device=device, tta=1,
+                                     tile=None if device.type == "cuda" else 1024)
+            cv2.imwrite(os.path.join(od, stem_of(f) + "_m.png"), pm)
+        print(f"teacher maps for {len(files)} images -> {od}", flush=True)
     json.dump(dict(best_val_pq=best, rule=best_rule, minutes=(time.time() - t0) / 60, params=count_params(model),
                    cfg=cfg, args=vars(a)), open(os.path.join(a.out_dir, "summary.json"), "w"), indent=1,
               default=str)

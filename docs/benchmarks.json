@@ -1,0 +1,20 @@
+{
+ "human_all": {
+  "pq": 0.33991581227028206,
+  "sq": 0.633659462715407,
+  "rq": 0.5364329458817648,
+  "tp": 4292,
+  "fp": 3709,
+  "fn": 3709,
+  "pairs": "each annotator vs each other annotator of the same image"
+ },
+ "human_fold0": {
+  "pq": 0.333662600116151,
+  "sq": 0.6388793103606485,
+  "rq": 0.5222623345367028,
+  "tp": 868,
+  "fp": 794,
+  "fn": 794,
+  "pairs": "each annotator vs each other annotator of the same image"
+ }
+}
