@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 from .cache import Cache, build_cache
 from .data import (TileDataset, collate_tiles, day_folds, find_annotation_json, find_dir, fold_of, load_image,
                    stem_of)
-from .evaluate import grid_search
+from .evaluate import GRID_EXTRACT, grid_search
 from .geometry import make_inputs
 from .infer import predict_maps
 from .losses import FilamentLoss
@@ -183,7 +183,7 @@ def main():
         if va_eval and ((ep + 1) % a.val_every == 0 or last):
             ema.module.eval()
             maps, locs = predict_files(ema.module, va_eval, image_dir, device)
-            res, rule, _ = grid_search(maps, {f: gt_sets[f] for f in va_eval}, locs)
+            res, rule, _ = grid_search(maps, {f: gt_sets[f] for f in va_eval}, locs, extract_grid=GRID_EXTRACT[1:3])
             msg.update(val_pq=res.pq, val_sq=res.sq, val_rq=res.rq, tp=res.tp, fp=res.fp, fn=res.fn, rule=rule)
             if res.pq > best:
                 best, best_rule = res.pq, rule
