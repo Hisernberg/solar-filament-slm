@@ -28,7 +28,23 @@ FEATURES = ["log_area", "meanp", "maxp", "p50", "frac_hi", "spine_mean", "spine_
             "n_comp_img", "rank_meanp", "dist_nn"]
 
 
-def label_components(prob_u8: np.ndarray, t_lo: float, t_hi: float, close_px: int = 0):
+def grow_labels(lab: np.ndarray, g: float) -> np.ndarray:
+    """Boundary calibration: g > 0 grows every instance by g px into background (nearest-instance
+    assignment, so masks stay disjoint); g < 0 erodes each instance by |g| px."""
+    if g == 0 or lab.max() == 0:
+        return lab
+    if g > 0:
+        dist, (iy, ix) = ndi.distance_transform_edt(lab == 0, return_indices=True)
+        out = lab[iy, ix]
+        out[dist > g] = 0
+        return out.astype(lab.dtype)
+    inner = ndi.distance_transform_edt(lab > 0)
+    out = lab.copy()
+    out[inner <= -g] = 0
+    return out
+
+
+def label_components(prob_u8: np.ndarray, t_lo: float, t_hi: float, close_px: int = 0, grow_px: float = 0):
     lo = prob_u8 > int(round(t_lo * 255))
     if close_px > 0:
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * close_px + 1, 2 * close_px + 1))
@@ -48,6 +64,8 @@ def label_components(prob_u8: np.ndarray, t_lo: float, t_hi: float, close_px: in
         sub = lab[sl]
         filled = ndi.binary_fill_holes(sub == i)
         sub[filled & (sub == 0)] = i
+    if grow_px:
+        lab = grow_labels(lab, grow_px)
     return lab, len(keep)
 
 
@@ -94,8 +112,8 @@ def component_features(lab: np.ndarray, n: int, prob_u8: np.ndarray, spine_u8: n
     order = np.argsort(np.argsort(-meanp))
     pts = np.stack([cx, cy], 1)
     if n > 1:
-        d = np.sqrt(((pts[:, None] - pts[None]) ** 2).sum(-1)); np.fill_diagonal(d, np.inf)
-        dist_nn = d.min(1) / disk.r
+        from scipy.spatial import cKDTree
+        dist_nn = cKDTree(pts).query(pts, k=2)[0][:, 1] / disk.r
     else:
         dist_nn = np.full(n, 2.0)
     return dict(log_area=np.log(area), meanp=meanp, maxp=maxp, p50=p50, frac_hi=p90, spine_mean=spine_mean,

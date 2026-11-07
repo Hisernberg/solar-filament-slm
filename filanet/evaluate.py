@@ -9,7 +9,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from .geometry import Disk
-from .metric import IOU_T, PQResult, encode, iou_matrix
+from pycocotools import mask as mask_util
+
+from .metric import IOU_T, PQResult
 from .postproc import component_features, label_components
 
 
@@ -22,12 +24,24 @@ class ImageComps:
 
 
 def build_image(prob_u8, spine_u8, disk: Disk, gt_sets_img, t_lo, t_hi, close_px=0, local=None,
-                keep_lab=False) -> ImageComps:
-    lab, n = label_components(prob_u8, t_lo, t_hi, close_px)
+                keep_lab=False, grow_px=0) -> ImageComps:
+    lab, n = label_components(prob_u8, t_lo, t_hi, close_px, grow_px)
     feats = component_features(lab, n, prob_u8, spine_u8, disk, local)
-    rles = [encode(lab == i) for i in range(1, n + 1)]
-    ious = [iou_matrix(gt, rles) for gt in gt_sets_img]
+    ious = [iou_from_labels(lab, n, gt) for gt in gt_sets_img]
     return ImageComps(feats, ious, n, lab if keep_lab else None)
+
+
+def iou_from_labels(lab: np.ndarray, n: int, gt_rles: list) -> np.ndarray:
+    """Exact IoU between every GT mask and every labelled component, in O(n_gt * H * W)."""
+    if not gt_rles or n == 0:
+        return np.zeros((len(gt_rles), n))
+    area = np.bincount(lab.ravel(), minlength=n + 1)[1:].astype(np.float64)
+    out = np.zeros((len(gt_rles), n))
+    for g, r in enumerate(gt_rles):
+        m = mask_util.decode(r).astype(bool)
+        inter = np.bincount(lab[m], minlength=n + 1)[1:].astype(np.float64)
+        out[g] = inter / (m.sum() + area - inter)
+    return out
 
 
 def pq_select(cache: dict[str, ImageComps], keep: dict[str, np.ndarray]) -> PQResult:

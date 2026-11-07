@@ -30,7 +30,8 @@ def _build(args):
     sm = cv2.imread(G["maps"][f] + "_s.png", cv2.IMREAD_GRAYSCALE)
     disk = Disk(*G["disks"][f])
     local = make_inputs(load_image(os.path.join(G["image_dir"], f)), disk)[0][1]
-    return f, build_image(pm, sm, disk, G["gt"][f], ex["t_lo"], ex["t_hi"], ex.get("close_px", 0), local)
+    return f, build_image(pm, sm, disk, G["gt"][f], ex["t_lo"], ex["t_hi"], ex.get("close_px", 0), local,
+                          grow_px=ex.get("grow_px", 0))
 
 
 def main():
@@ -39,13 +40,14 @@ def main():
     ap.add_argument("--runs", nargs="+", required=True)
     ap.add_argument("--out", default="weights")
     ap.add_argument("--n-folds", type=int, default=5)
+    ap.add_argument("--oof-subdir", default="oof", help="oof or oof_tta4")
     ap.add_argument("--workers", type=int, default=os.cpu_count())
     a = ap.parse_args()
     ann = find_annotation_json(a.data_dir)
     G["image_dir"] = find_dir(a.data_dir, "train_images")
     maps, disks = {}, {}
     for r in a.runs:
-        od = os.path.join(r, "oof")
+        od = os.path.join(r, a.oof_subdir)
         d = json.load(open(os.path.join(od, "disks.json")))
         for f, v in d.items():
             maps[f] = os.path.join(od, stem_of(f)); disks[f] = v
@@ -57,7 +59,9 @@ def main():
 
     report, best = {"extract": []}, None
     caches = {}
-    for ex in GRID_EXTRACT + [dict(t_lo=0.5, t_hi=0.9, close_px=2)]:
+    extra = [dict(t_lo=0.5, t_hi=0.9, close_px=2), dict(t_lo=0.5, t_hi=0.9, grow_px=1),
+             dict(t_lo=0.5, t_hi=0.9, grow_px=2), dict(t_lo=0.5, t_hi=0.9, grow_px=-1)]
+    for ex in GRID_EXTRACT + extra + [dict(e, t_lo=0.4, t_hi=0.85) for e in extra[1:]]:
         with ProcessPoolExecutor(a.workers) as pool:
             cache = dict(pool.map(_build, [(f, ex) for f in files], chunksize=4))
         key = json.dumps(ex, sort_keys=True)

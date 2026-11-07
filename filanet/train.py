@@ -64,6 +64,7 @@ def parse():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-train-images", type=int, default=0, help="debug: subsample")
     ap.add_argument("--time-limit-min", type=float, default=0, help="stop training after N minutes")
+    ap.add_argument("--oof-tta", type=int, default=1, help="D4 views for the OOF dump (also writes a 1-view copy)")
     ap.add_argument("--dump-all-maps", action="store_true",
                     help="after training, write mask/spine maps for ALL images (teacher maps for distillation)")
     ap.add_argument("--time-budget-min", type=float, default=0,
@@ -218,11 +219,20 @@ def main():
         disks = {}
         for f in va:
             img = load_image(os.path.join(image_dir, f))
-            pm, sm, disk = predict_maps(m, img, device=device, tta=1, tile=None if device.type == "cuda" else 1024)
+            tl = None if device.type == "cuda" else 1024
+            pm, sm, disk = predict_maps(m, img, device=device, tta=1, tile=tl)
             cv2.imwrite(os.path.join(od, stem_of(f) + "_m.png"), pm)
             cv2.imwrite(os.path.join(od, stem_of(f) + "_s.png"), sm)
             disks[f] = [disk.cx, disk.cy, disk.r]
+            if a.oof_tta > 1:
+                odt = od + f"_tta{a.oof_tta}"
+                os.makedirs(odt, exist_ok=True)
+                pm, sm, _ = predict_maps(m, img, device=device, tta=a.oof_tta, tile=tl)
+                cv2.imwrite(os.path.join(odt, stem_of(f) + "_m.png"), pm)
+                cv2.imwrite(os.path.join(odt, stem_of(f) + "_s.png"), sm)
         json.dump(disks, open(os.path.join(od, "disks.json"), "w"))
+        if a.oof_tta > 1:
+            json.dump(disks, open(os.path.join(od + f"_tta{a.oof_tta}", "disks.json"), "w"))
     if a.dump_all_maps:
         from .model import load_checkpoint
         ck_path = os.path.join(a.out_dir, "best.pt" if va else "last.pt")

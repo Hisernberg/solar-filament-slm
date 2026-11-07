@@ -24,7 +24,7 @@ from filanet.postproc import component_features, label_components, rule_keep  # 
 
 
 def extract(pm, sm, disk, img, post, rescorer=None):
-    lab, n = label_components(pm, post["t_lo"], post["t_hi"], post.get("close_px", 0))
+    lab, n = label_components(pm, post["t_lo"], post["t_hi"], post.get("close_px", 0), post.get("grow_px", 0))
     feats = component_features(lab, n, pm, sm, disk, make_inputs(img, disk)[0][1])
     if rescorer is not None:
         keep = rescorer.keep(feats)

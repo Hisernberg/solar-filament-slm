@@ -16,5 +16,25 @@
   "fp": 794,
   "fn": 794,
   "pairs": "each annotator vs each other annotator of the same image"
+ },
+ "classical": {
+  "fold0_pq": 0.1877293961805448,
+  "sq": 0.6587595175062756,
+  "rq": 0.2849740932642487,
+  "tp": 440,
+  "fp": 961,
+  "fn": 1247,
+  "o2m": 135,
+  "m2o": 2,
+  "params": {
+   "k0": 0.6,
+   "sigma": 1.5,
+   "t_lo": 0.5,
+   "t_hi": 0.8,
+   "min_area": 400,
+   "min_meanp": 0.85,
+   "max_sin_lon": 0.96
+  },
+  "tuned_on": "160 images from folds 1-4"
  }
 }
