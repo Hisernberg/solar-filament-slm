@@ -84,8 +84,18 @@ def main():
     G.update(maps=maps, disks=disks, gt=build_gt_sets(ann, files), post=post)
     with ProcessPoolExecutor(a.workers) as ex:
         cache = dict(ex.map(_build, files, chunksize=4))
-    keep = {f: keep_of(ic, post, rescorer) for f, ic in cache.items()}
-    out = {"n_images": len(files), "post": post, "overall": summarize(pq_select(cache, keep))}
+    if rescorer is not None:
+        # never score the rescorer in-sample: refit it fold-by-fold (grouped by CV fold) and keep e_hat > tau
+        from filanet.data import day_folds, fold_of
+        from filanet import rescore as rs
+        folds = day_folds(files, 5)
+        scores, _, _ = rs.fit_oof(cache, {f: fold_of(f, folds) for f in files})
+        keep = {f: scores[f] > post["tau"] if cache[f].n else np.zeros(0, bool) for f in files}
+        out_note = "rescorer scores are out-of-fold (refit per CV fold)"
+    else:
+        keep = {f: keep_of(ic, post, rescorer) for f, ic in cache.items()}
+        out_note = "fixed rule"
+    out = {"n_images": len(files), "post": post, "note": out_note, "overall": summarize(pq_select(cache, keep))}
     print("overall", out["overall"], flush=True)
 
     groups = collections.defaultdict(dict)

@@ -41,7 +41,12 @@ def grow_labels(lab: np.ndarray, g: float) -> np.ndarray:
     inner = ndi.distance_transform_edt(lab > 0)
     out = lab.copy()
     out[inner <= -g] = 0
-    return out
+    # components can vanish entirely: compact the label ids so every id has pixels
+    ids = np.unique(out)
+    ids = ids[ids > 0]
+    remap = np.zeros(int(lab.max()) + 1, lab.dtype)
+    remap[ids] = np.arange(1, len(ids) + 1, dtype=lab.dtype)
+    return remap[out]
 
 
 def label_components(prob_u8: np.ndarray, t_lo: float, t_hi: float, close_px: int = 0, grow_px: float = 0):
@@ -66,6 +71,7 @@ def label_components(prob_u8: np.ndarray, t_lo: float, t_hi: float, close_px: in
         sub[filled & (sub == 0)] = i
     if grow_px:
         lab = grow_labels(lab, grow_px)
+        return lab, int(lab.max())
     return lab, len(keep)
 
 

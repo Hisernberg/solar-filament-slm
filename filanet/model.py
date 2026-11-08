@@ -138,7 +138,7 @@ def count_params(m: nn.Module) -> int:
 
 
 def save_checkpoint(path: str, model: nn.Module, cfg: dict, extra: dict | None = None, half: bool = True):
-    sd = {k: (v.half() if half and v.is_floating_point() else v) for k, v in model.state_dict().items()}
+    sd = {k: (v.half() if half and v.is_floating_point() else v).cpu() for k, v in model.state_dict().items()}
     from .geometry import DISK_FIT
     torch.save({"model": sd, "cfg": cfg, "disk_fit": getattr(model, "disk_fit", DISK_FIT), **(extra or {})}, path)
 

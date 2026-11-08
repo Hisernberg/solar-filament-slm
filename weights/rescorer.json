@@ -1,0 +1,26 @@
+{
+ "tau": 0.22999999999999998,
+ "features": [
+  "log_area",
+  "meanp",
+  "maxp",
+  "p50",
+  "frac_hi",
+  "spine_mean",
+  "spine_max",
+  "spine_frac",
+  "elong",
+  "major",
+  "minor",
+  "fill",
+  "r",
+  "abs_x",
+  "abs_y",
+  "sin_lon",
+  "contrast",
+  "n_comp_img",
+  "rank_meanp",
+  "dist_nn"
+ ],
+ "oof_pq": 0.43791635604839035
+}

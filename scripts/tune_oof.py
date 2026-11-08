@@ -41,6 +41,7 @@ def main():
     ap.add_argument("--out", default="weights")
     ap.add_argument("--n-folds", type=int, default=5)
     ap.add_argument("--oof-subdir", default="oof", help="oof or oof_tta4")
+    ap.add_argument("--extract", default=None, help='JSON list of extraction settings to try instead of the default grid')
     ap.add_argument("--workers", type=int, default=os.cpu_count())
     a = ap.parse_args()
     ann = find_annotation_json(a.data_dir)
@@ -61,7 +62,8 @@ def main():
     caches = {}
     extra = [dict(t_lo=0.5, t_hi=0.9, close_px=2), dict(t_lo=0.5, t_hi=0.9, grow_px=1),
              dict(t_lo=0.5, t_hi=0.9, grow_px=2), dict(t_lo=0.5, t_hi=0.9, grow_px=-1)]
-    for ex in GRID_EXTRACT + extra + [dict(e, t_lo=0.4, t_hi=0.85) for e in extra[1:]]:
+    grid = json.loads(a.extract) if a.extract else GRID_EXTRACT + extra
+    for ex in grid:
         with ProcessPoolExecutor(a.workers) as pool:
             cache = dict(pool.map(_build, [(f, ex) for f in files], chunksize=4))
         key = json.dumps(ex, sort_keys=True)
