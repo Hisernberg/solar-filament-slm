@@ -12,8 +12,23 @@ annotator set of every image), reproduced exactly from the organisers' self-eval
 | Classical dark-feature detector (training-free, tuned on folds 1-4) | 0 | 0.188 | 0.659 | 0.285 | 440 | 961 | 1247 |
 | Human expert vs other experts (same images) | - | 0.334 | 0.639 | 0.522 | - | - | - |
 | FilaNet, DINOv3 ConvNeXt-Tiny encoder (14 epochs, undertrained) | 30.2 M | 0.430 | 0.669 | 0.643 | 1047 | 522 | 640 |
-| **FilaNet-Atto v1** (31 epochs on T4) | **4.47 M** | **0.437** | 0.670 | 0.653 | 1012 | 401 | 675 |
+| FilaNet-Atto v1 (31 epochs on T4) | 4.47 M | 0.437 | 0.670 | 0.653 | 1012 | 401 | 675 |
+| FilaNet-Atto v2, limb-ring disk fit, medoid targets | 4.47 M | 0.434 | 0.670 | 0.648 | 1003 | 408 | 684 |
+| **FilaNet-Atto v2, mixed multi-annotator targets** | **4.47 M** | **0.442** | 0.669 | 0.661 | 1021 | 380 | 666 |
 | ConvNeXt-Small U-Net baseline (reported by its authors) | ~50 M | 0.450 | 0.684 | - | 1096 | 549 | 591 |
+
+### Test-time augmentation (fold 0, 4 D4 views)
+
+| Variant | fixed rule PQ | SQ | rescorer PQ (rescorer fitted on 1-view maps) |
+|---|---|---|---|
+| v2 medoid, 1 view | 0.401 | 0.665 | 0.434 |
+| v2 medoid, 4 views | **0.416** | **0.668** | 0.425 (miscalibrated) |
+| v2 mixed, 1 view | 0.408 | 0.663 | 0.442 |
+| v2 mixed, 4 views | **0.418** | **0.666** | 0.430 (miscalibrated) |
+
+TTA improves the probability maps (+0.010 to +0.015 PQ under fixed rules, +0.008 SQ after rescoring),
+but a rescorer trained on single-view maps under-keeps on smoother TTA maps (TP 1003 -> 897).
+A TTA-aware rescorer needs TTA OOF maps on the fitting folds: the final round dumps them for all folds.
 
 ## Out-of-fold, folds 0-2 (421 images, 4,898 GT instances), FilaNet-Atto v1
 
@@ -47,7 +62,16 @@ Breakdowns (`docs/oof_eval_filanet_atto_v1.json`, figure `docs/figures/oof_filan
 5. Training was compute-bound (T4, 31 epochs, val PQ still rising) - longer training is the most
    direct lever on the remaining 0.013 gap to the 50 M baseline.
 
-## Pending
+6. The limb-ring disk fit (correct geometry) is PQ-neutral (-0.003, within noise).
+7. Mixed multi-annotator targets (medoid half the time, a random annotator otherwise) give +0.009.
 
-* Run C (v2 limb-ring disk fit; medoid vs mixed multi-annotator targets; 4-view TTA), fold 0.
-* Folds 3-4 and a full-data final model (GPU quota resets Nov 14).
+## Test-set inference (v1 weights, CPU, 4 cores)
+
+180 test images -> 1,125 filaments on 177 images (provided baseline: 1,116 on 174); all masks decode,
+are non-empty and pixel-disjoint; median predicted area 1,200 px (GT median 1,228 px);
+13.4 s/image end to end on a 4-core CPU (12.0 s network, tiled 1024 px).
+
+## Next (final round, `kaggle/launch_final.sh`, after the Nov 14 quota reset)
+
+v2 + mixed targets, ~2x longer training, TTA OOF maps for every fold:
+D = folds 1, 2; E = folds 3, 4; F = fold 0 + full-data final model.
